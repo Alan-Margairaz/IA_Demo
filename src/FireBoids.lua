@@ -4,6 +4,7 @@
 -- **********************************
 -- Demo variables
 -- *********************************
+local fireBoids = {}
 
 -- Constants
 W_WIDTH = 800
@@ -28,11 +29,19 @@ boids.img = love.graphics.newImage('Explosion.png')
 boids.w = boids.img:getWidth()
 boids.h = boids.img:getHeight()
 
-local predatorBoid
+local bAbilityInUse = false
+local bDoOnce = false
 
+local predatorBoid
 local followerBoids = {}
 followerBoids.list = {}
 
+local target
+
+local initiator
+local initiatorImage = love.graphics.newImage('Player.png')
+local initiatorXPosition
+local initiatorYPosition
 
 -- *****************
 -- Fonctions
@@ -43,7 +52,48 @@ function distance(pBoid1, pBoid2)
 end
 
 function getPredatorPosition()
+  -- make the followers follow the predator
+end
 
+function trackPrey(dt)
+  local closestPrey = nil
+  local closestDistance = math.huge
+
+  local preyDistance = math.sqrt((target.x - predatorBoid.x)^2 + (target.y - predatorBoid.y)^2)
+
+  if preyDistance < closestDistance then
+    closestPrey = target
+    closestDistance = preyDistance
+  end
+
+  if not closestPrey then return end
+
+  -- Calculating the prey's future position 
+  local futurePosition = {
+    x = target.x + target.vx * dt,
+    y = target.x + target.vy * dt
+  }
+
+  -- Calculating the force to get to the target
+  local force = {
+    x = futurePosition.x - predatorBoid.x,
+    y = futurePosition.y - predatorBoid.y
+  }
+
+  local magnitude = math.sqrt(force.x^2 + force.y^2)
+  if magnitude > 0 then
+    force.x = (force.x/magnitude) * VMAX
+    force.y = (force.y/magnitude) * VMAX
+  end
+
+  predatorBoid.vx = predatorBoid.vx + force.x * dt
+  predatorBoid.vy = predatorBoid.vy + force.y * dt
+
+  local speed = math.sqrt(predatorBoid.vx^2 + predatorBoid.vy^2)
+  if speed > VMAX then
+    predatorBoid.vx = (predatorBoid.vx / speed) * VMAX
+    predatorBoid.vy = (predatorBoid.vy / speed) * VMAX
+  end
 end
 
 -- Boids 
@@ -51,10 +101,12 @@ function createBoid(boidType)
 
   local boid = {}
   
-  boid.x = math.random(W_LIMIT, W_WIDTH - W_LIMIT) 
-  boid.y = math.random(W_LIMIT, W_HEIGHT - W_LIMIT)
-  boid.vx = math.random(-VMAX, VMAX)  
+  boid.x = initiator.x
+  boid.y = initiator.y
+  boid.vx = math.random(-VMAX, VMAX) 
   boid.vy = math.random(-VMAX, VMAX) 
+
+  bAbilityInUse = true
 
   return boid
 end
@@ -144,8 +196,17 @@ end
 -- INITIALISATION
 -- ****************************
 
+function getGuardPosition(guard, currentGuardImage, player) 
+  return get_dist(guard.x, guard.y, player.x, player.y)
+end
 
-function launchFireBall()
+function getGuardAngle(guard, currentGuardImage, player)
+  return get_angle(guard.x, guard.y, player.x, player.y)                        
+end
+
+function fireBoids.launchFireBall(guard, player)
+  initiator = player
+  target = guard
   
   for n = 1, N_BOIDS do
     if n == 1 then
@@ -163,8 +224,11 @@ end
 -- ******************
 
 function love.update(dt)
+  if bAbilityInUse then
+    trackPrey(dt)
     updatePredatorBoid(dt)
     updateFollowerBoids(dt)
+  end
 end
 
 function updateFollowerBoids(dt)
@@ -219,10 +283,8 @@ function love.draw()
   for index, boid in ipairs(boids.list) do
     -- Attribution du state prédateur au 1er boid qui mènera les autres
     if index == 1 then
-        boid.States = boid.States.PREDATOR
         predatorBoid = boid[index]
     else
-        boid.States = boid.States.FOLLOWER
         table.insert(followerBoids,  boid[index])
     end
 
@@ -242,3 +304,5 @@ function destroyBoids()
         table.remove(followerBoids.list, i)
     end
 end
+
+return fireBoids
