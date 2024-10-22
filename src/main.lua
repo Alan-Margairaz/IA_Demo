@@ -4,13 +4,17 @@ DISTANCE_PERTE = 400
 DISTANCE_ATTAQUE = 64 
 DELAI_COMPTEUR = 50
 VITESSE_guard = 45
-LARGEUR_ECRAN = 1600
-HAUTEUR_ECRAN = 1200
+LARGEUR_ECRAN = 800
+HAUTEUR_ECRAN = 600
 
-START_TIME = 0
+local startTime = 0
 local fireBoids = require("FireBoids")
-local cooldownValue = 5
+local cooldownValue = 10
 local bUnderCooldown = false
+
+local boidImage = love.graphics.newImage('Explosion.png')
+local boidHeight = boidImage:getHeight()
+local boidWidth = boidImage:getWidth()
 
 function get_dist(x1,y1, x2,y2)
 
@@ -46,7 +50,6 @@ guard.etat = guard.lst_Etats.GARDE
 guard.compteur = 0
 
 for k, v in pairs(guard.lst_Etats) do
-    print(k, v)
     guard['image_'..v] = love.graphics.newImage(v..'.png')
 end
 
@@ -66,18 +69,18 @@ function getGuardImage()
 end
 
 function update_cooldown(dt)
-  local currentTime = love.timer.getTime() - START_TIME
+  local currentTime = love.timer.getTime() - startTime
 
   if currentTime >= cooldownValue and bUnderCooldown then
     bUnderCooldown = false
+    bTouchedtarget = false
+    bPredatorDead = false
   end
 end
 
 
 function update_guard(dt)
-
-
-  -- on aura besoin de connaître la position par rapport au player
+  -- Position par rapport au player
   local dist = get_dist(guard.x + guard[guard.image_courante]:getWidth()/2, 
                         guard.y + guard[guard.image_courante]:getHeight()/2, 
                         player.x + player.image:getWidth()/2, 
@@ -192,11 +195,9 @@ function update_player(dt)
   elseif love.mouse.isDown(1) and not bUnderCooldown then
     if not bUnderCooldown then
       local currentGuardImage = getGuardImage()
-      START_TIME = love.timer:getTime()
+      startTime = love.timer:getTime()
       bUnderCooldown = true
       fireBoids.launchFireBall(guard, player, player.image)
-    else
-      print("Ability still in cooldown")
     end
   end
 
@@ -204,18 +205,52 @@ end
 
 
 function love.update(dt)
-
     update_player(dt)
     update_guard(dt)
     update_cooldown(dt)
 
+    if bUnderCooldown then
+      fireBoids.applyFlocking(dt)
+      if not bPredatorDead then
+        fireBoids.trackPrey(dt, guard, player)
+      else
+        fireBoids.followLastKnownLocation(dt, guard)
+      end
+    end
 end
 
 
 function love.draw()
   love.graphics.draw(guard[guard.image_courante], guard.x, guard.y)
-  love.graphics.draw(player.image, player.x, player.y)
+  love.graphics.draw(player.image, player.x, player.y)  
+  
+  if bUnderCooldown and not bTouchedtarget then
+    for index, boid in ipairs(followerBoids.list) do
+      love.graphics.draw(boidImage, 
+        boid.x + player.image:getWidth()/2, 
+        boid.y + player.image:getHeight()/2, 
+        -math.atan2(boid.vx, boid.vy), 
+        0.67,
+        0.67,
+        boidWidth/2, 
+        boidHeight/2)
+    end
+  end
 
+  if bUnderCooldown and not bPredatorDead then
+    love.graphics.draw(boidImage, 
+      predatorBoid.x + player.image:getWidth()/2, 
+      predatorBoid.y + player.image:getHeight()/2, 
+      -math.atan2(predatorBoid.vx, predatorBoid.vy),
+      0.67,
+      0.67, 
+      boidWidth/2, 
+      boidHeight/2)
+  end
+  
+  if bUnderCooldown then
+    love.graphics.print("Ability still in cooldown", 20, 200)
+  end
 end
 
 

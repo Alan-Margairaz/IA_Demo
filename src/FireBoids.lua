@@ -11,106 +11,141 @@ W_WIDTH = 800
 W_HEIGHT = 600
 W_LIMIT = 40
 
-N_BOIDS = 80
+DETECTION_VARIANCE = 1
+
+
+N_BOIDS = 40
 CVISUAL_RANGE = 60 -- could be an individual boid property
 DEAD_ANGLE = 60
 V_TURN = 2 -- could be an individual boid property
-MINDISTANCE = 20
-VMAX = 100
+MINDISTANCE = 10
+VMAX = 150
 
 FOLLOWER_AVOIDANCE = 30 
-FOLLOWER_COHESION = 2 
+FOLLOWER_COHESION = 4 
 FOLLOWER_CENTERING = 270
+FOLLOWER_CONVERGING = 200
 
--- boids table
+predatorBoid = {}
+predatorBoid.img = nil
+
+followerBoids = {}
+followerBoids.list = {}
+followerBoids.img = nil
+
+bTouchedtarget = false
+bPredatorDead = false
+
 local boids = {}
 boids.list = {}
-boids.img = love.graphics.newImage('Explosion.png')
-boids.w = boids.img:getWidth()
-boids.h = boids.img:getHeight()
 
-local bAbilityInUse = false
-local bDoOnce = false
+local predatorLastPos = {}
+predatorLastPos.x = 0
+predatorLastPos.y = 0
 
-local predatorBoid
-local followerBoids = {}
-followerBoids.list = {}
-
-local target
-
-local initiator
-local initiatorImage = love.graphics.newImage('Player.png')
-local initiatorXPosition
-local initiatorYPosition
-
--- *****************
+-- ****************************
 -- Fonctions
--- *****************
+-- ****************************
 
-function distance(pBoid1, pBoid2) 
-  return math.sqrt((pBoid1.x - pBoid2.x)^2 + (pBoid1.y - pBoid2.y)^2)
+function fireBoids.trackPrey(dt, target, player)
+  if not bPredatorDead then 
+
+    local closestPrey = nil
+    local closestDistance = math.huge
+
+    local preyDistance = distance(predatorBoid, target)
+    local preyAngle = angle(predatorBoid, target)
+
+    if preyDistance < closestDistance then
+      closestPrey = target
+      closestDistance = preyDistance
+      if math.abs(preyDistance) <= DETECTION_VARIANCE then
+        destroyBoid(predatorBoid)
+        return
+      end   
+    end
+
+    if not closestPrey then return end
+
+    -- Calculating the prey's future position 
+    local futurePosition = {
+      x = target.x + target.vx * dt,
+      y = target.x + target.vy * dt
+    }
+
+    -- Calculating the force to get to the target
+    local force = {
+      x = futurePosition.x - predatorBoid.x,
+      y = futurePosition.y - predatorBoid.y
+    }
+
+    local magnitude = math.sqrt(force.x^2 + force.y^2)
+    if magnitude > 0 then
+      force.x = (force.x/magnitude) * VMAX
+      force.y = (force.y/magnitude) * VMAX
+    end
+
+    predatorBoid.vx = predatorBoid.vx + force.x * dt
+    predatorBoid.vy = predatorBoid.vy + force.y * dt
+
+    local speed = math.sqrt(predatorBoid.vx^2 + predatorBoid.vy^2)
+    if speed > VMAX then
+      predatorBoid.vx = (predatorBoid.vx / speed) * VMAX
+      predatorBoid.vy = (predatorBoid.vy / speed) * VMAX
+    end
+
+    predatorBoid.x = predatorBoid.x + speed * math.cos(preyAngle) * dt
+    predatorBoid.y = predatorBoid.y + speed * math.sin(preyAngle) * dt 
+  else
+    -- Here the followerBoids should go to last know position, so update targetPos
+  end
 end
 
-function getPredatorPosition()
-  -- make the followers follow the predator
+function fireBoids.followLastKnownLocation(dt, target)
+  for _, boid in pairs(followerBoids.list) do
+    local followAngle = angle(boid, predatorLastPos)
+
+    local force = {
+      x = predatorLastPos.x - boid.x,
+      y = predatorLastPos.y - boid.y
+    }
+
+    local magnitude = math.sqrt(force.x^2 + force.y^2)
+    if magnitude > 0 then
+      force.x = (force.x/magnitude) * VMAX
+      force.y = (force.y/magnitude) * VMAX
+    end
+
+    boid.vx = boid.vx + force.x * dt
+    boid.vy = boid.vy + force.y * dt
+
+    local speed = math.sqrt(boid.vx^2 + boid.vy^2)
+    if speed > VMAX then
+      boid.vx = (boid.vx / speed) * VMAX
+      boid.vy = (boid.vy / speed) * VMAX
+    end
+
+    boid.x = boid.x + speed * math.cos(followAngle) * dt
+    boid.y = boid.y + speed * math.sin(followAngle) * dt
+  end
 end
 
-function trackPrey(dt)
-  local closestPrey = nil
-  local closestDistance = math.huge
-
-  local preyDistance = math.sqrt((target.x - predatorBoid.x)^2 + (target.y - predatorBoid.y)^2)
-
-  if preyDistance < closestDistance then
-    closestPrey = target
-    closestDistance = preyDistance
+function fireBoids.checkBoidPositions(target)
+  if #followerBoids.list <= 0 then
+    bTouchedtarget = true
   end
 
-  if not closestPrey then return end
-
-  -- Calculating the prey's future position 
-  local futurePosition = {
-    x = target.x + target.vx * dt,
-    y = target.x + target.vy * dt
-  }
-
-  -- Calculating the force to get to the target
-  local force = {
-    x = futurePosition.x - predatorBoid.x,
-    y = futurePosition.y - predatorBoid.y
-  }
-
-  local magnitude = math.sqrt(force.x^2 + force.y^2)
-  if magnitude > 0 then
-    force.x = (force.x/magnitude) * VMAX
-    force.y = (force.y/magnitude) * VMAX
-  end
-
-  predatorBoid.vx = predatorBoid.vx + force.x * dt
-  predatorBoid.vy = predatorBoid.vy + force.y * dt
-
-  local speed = math.sqrt(predatorBoid.vx^2 + predatorBoid.vy^2)
-  if speed > VMAX then
-    predatorBoid.vx = (predatorBoid.vx / speed) * VMAX
-    predatorBoid.vy = (predatorBoid.vy / speed) * VMAX
+  for _, boid in pairs(followerBoids.list) do
+    local boidDistance = distance(boid, target)
+    if math.abs(boidDistance) <= DETECTION_VARIANCE then
+      destroyBoid(boid)
+    end
   end
 end
 
--- Boids 
-function createBoid(boidType)
-
-  local boid = {}
-  
-  boid.x = initiator.x
-  boid.y = initiator.y
-  boid.vx = math.random(-VMAX, VMAX) 
-  boid.vy = math.random(-VMAX, VMAX) 
-
-  bAbilityInUse = true
-
-  return boid
-end
-
+-- ****************************
+-- Boids flocking behavior
+-- ****************************
 
 function cohesion(pBoid, pVisualRange)
 
@@ -124,8 +159,7 @@ function cohesion(pBoid, pVisualRange)
   local sumVy = 0
   local n = 0
 
-  for index, otherBoid in ipairs(boids.list) do
-
+  for index, otherBoid in ipairs(followerBoids.list) do
     if distance(pBoid, otherBoid) < pVisualRange then
       sumX = sumX + otherBoid.x
       sumY = sumY + otherBoid.y
@@ -151,7 +185,7 @@ function keepDistance(pBoid, pMinDistance)
   dist.dx = 0
   dist.dy = 0
   
-  for index, otherBoid in ipairs(boids.list) do
+  for index, otherBoid in ipairs(followerBoids.list) do
     if pBoid ~= otherBoid then
       if distance(otherBoid, pBoid) < pMinDistance then
         dist.dx = dist.dx + (pBoid.x - otherBoid.x)
@@ -192,53 +226,80 @@ function keepInside(pBoid, pVTurn, pLimit)
 
 end
 
+function convergeTo(pBoid)
+  local finalAngle = {}
+  finalAngle.x = 0
+  finalAngle.y = 0
+
+  local angleToTarget
+  if bPredatorDead and predatorLastPos then
+    angleToTarget = math.atan2((predatorLastPos.y - pBoid.y), (predatorLastPos.x - pBoid.x))
+  else
+    angleToTarget = math.atan2((predatorBoid.y - pBoid.y), (predatorBoid.x - pBoid.x))
+  end
+
+  finalAngle.x = math.cos(angleToTarget)
+  finalAngle.y = math.sin(angleToTarget)
+
+  return finalAngle
+end
+
 -- ****************************
 -- INITIALISATION
 -- ****************************
 
-function getGuardPosition(guard, currentGuardImage, player) 
-  return get_dist(guard.x, guard.y, player.x, player.y)
-end
-
-function getGuardAngle(guard, currentGuardImage, player)
-  return get_angle(guard.x, guard.y, player.x, player.y)                        
-end
-
 function fireBoids.launchFireBall(guard, player)
-  initiator = player
-  target = guard
-  
   for n = 1, N_BOIDS do
     if n == 1 then
-        predatorBoid = createBoid("Predator")
+        predatorBoid = createBoid(true, player)
     else
-        table.insert(followerBoids.list, createBoid("Follower"))
+        table.insert(followerBoids.list, createBoid(false, player))
     end
   end
-
 end
 
+function createBoid(bIsPredator, player)
+  if boidType then
+    predatorBoid.x = player.x
+    predatorBoid.y = player.y
+    predatorBoid.vx = VMAX
+    predatorBoid.vy = VMAX 
 
--- ******************
--- UPDATE
--- ******************
+    return predatorBoid
+  else
+    local followerBoid = {}
 
-function love.update(dt)
-  if bAbilityInUse then
-    trackPrey(dt)
-    updatePredatorBoid(dt)
-    updateFollowerBoids(dt)
+    followerBoid.x = player.x
+    followerBoid.y = player.y
+    followerBoid.vx = math.random(-VMAX, VMAX)
+    followerBoid.vy = math.random(-VMAX, VMAX)
+
+    return followerBoid
   end
 end
 
-function updateFollowerBoids(dt)
-    for index, boid in ipairs(boids.list) do 
+-- ****************************
+-- UPDATE
+-- ****************************
+
+function distance(pBoid1, pBoid2) 
+  return math.sqrt((pBoid1.x - pBoid2.x)^2 + (pBoid1.y - pBoid2.y)^2)
+end
+
+function angle(start, arrival)
+  return get_angle(start.x, start.y, arrival.x, arrival.y)
+end
+
+function fireBoids.applyFlocking(dt)
+    for index, boid in ipairs(followerBoids.list) do 
         -- align position and speed with that of others
         cohesionForce = cohesion(boid, CVISUAL_RANGE)
         -- boids avoid each other
         avoidanceForce = keepDistance(boid, MINDISTANCE)
         -- boids return to the center when approching window’s edges
         centeringForce = keepInside(boid, V_TURN, W_LIMIT)
+
+        attractionForce = convergeTo(boid)
     
         -- boids speed adjustement according all forces
         -- we could add ponderations
@@ -246,12 +307,14 @@ function updateFollowerBoids(dt)
                               + centeringForce.dVx * FOLLOWER_CENTERING
                               + (cohesionForce.dx 
                                 + cohesionForce.dVx) * FOLLOWER_COHESION
+                                + attractionForce.x * FOLLOWER_CONVERGING
                             ) * dt
     
         boid.vy = boid.vy + (avoidanceForce.dy * FOLLOWER_AVOIDANCE
                             + centeringForce.dVy * FOLLOWER_CENTERING
                             + (cohesionForce.dy 
                               + cohesionForce.dVy) * FOLLOWER_COHESION
+                              + attractionForce.y * FOLLOWER_CONVERGING
                             ) * dt
     
         -- speed limitation
@@ -265,44 +328,24 @@ function updateFollowerBoids(dt)
         -- move boid according to its speed
         boid.x = boid.x + boid.vx * dt
         boid.y = boid.y + boid.vy * dt
-    
     end
 end
 
-function updatePredatorBoid(dt)
-
-end
-
-
--- ***************
--- DRAWING 
--- ***************
-
-function love.draw()
-
-  for index, boid in ipairs(boids.list) do
-    -- Attribution du state prédateur au 1er boid qui mènera les autres
-    if index == 1 then
-        predatorBoid = boid[index]
-    else
-        table.insert(followerBoids,  boid[index])
-    end
-
-    love.graphics.draw(boids.img, boid.x, boid.y, -math.atan2(boid.vx, boid.vy), .67, .67, boids.w/2, boids.h/2)
-  end
-
-end
-
--- ***************
+-- ****************************
 -- CLEANUP 
--- ***************
+-- ****************************
 
-function destroyBoids()
-    predatorBoid = nil
-
-    for i = #followerBoids, -1 do
-        table.remove(followerBoids.list, i)
+function destroyBoid(boidToDestroy)
+  if boidToDestroy == predatorBoid then
+    predatorLastPos.x = predatorBoid.x
+    predatorLastPos.y = predatorBoid.y
+    bPredatorDead = true
+    predatorBoid = {}
+  else
+    if table.find(followerBoids.list, boidToDestroy) then
+      followerBoids[boidToDestroy] = nil
     end
+  end  
 end
 
 return fireBoids
