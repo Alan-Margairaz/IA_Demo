@@ -7,19 +7,19 @@
 local fireBoids = {}
 
 -- Constants
-W_WIDTH = 800
-W_HEIGHT = 600
+W_WIDTH = love.graphics.getWidth()
+W_HEIGHT = love.graphics.getHeight()
 W_LIMIT = 40
 
 DETECTION_VARIANCE = 1
 
 
-N_BOIDS = 40
+N_BOIDS = 41
 CVISUAL_RANGE = 60 -- could be an individual boid property
 DEAD_ANGLE = 60
 V_TURN = 2 -- could be an individual boid property
 MINDISTANCE = 10
-VMAX = 150
+VMAX = 300
 
 FOLLOWER_AVOIDANCE = 30 
 FOLLOWER_COHESION = 4 
@@ -35,6 +35,7 @@ followerBoids.img = nil
 
 bTouchedtarget = false
 bPredatorDead = false
+local bDoOnce = false
 
 local boids = {}
 boids.list = {}
@@ -49,7 +50,6 @@ predatorLastPos.y = 0
 
 function fireBoids.trackPrey(dt, target, player)
   if not bPredatorDead then 
-
     local closestPrey = nil
     local closestDistance = math.huge
 
@@ -59,7 +59,7 @@ function fireBoids.trackPrey(dt, target, player)
     if preyDistance < closestDistance then
       closestPrey = target
       closestDistance = preyDistance
-      if math.abs(preyDistance) <= DETECTION_VARIANCE then
+      if math.abs(closestDistance) <= DETECTION_VARIANCE then
         destroyBoid(predatorBoid)
         return
       end   
@@ -96,8 +96,10 @@ function fireBoids.trackPrey(dt, target, player)
 
     predatorBoid.x = predatorBoid.x + speed * math.cos(preyAngle) * dt
     predatorBoid.y = predatorBoid.y + speed * math.sin(preyAngle) * dt 
-  else
-    -- Here the followerBoids should go to last know position, so update targetPos
+
+    predatorLastPos = {}
+    predatorLastPos.x = predatorBoid.x
+    predatorLastPos.y = predatorBoid.y
   end
 end
 
@@ -135,12 +137,12 @@ function fireBoids.checkBoidPositions(target)
     bTouchedtarget = true
   end
 
-  for _, boid in pairs(followerBoids.list) do
-    local boidDistance = distance(boid, target)
-    if math.abs(boidDistance) <= DETECTION_VARIANCE then
-      destroyBoid(boid)
-    end
-  end
+  -- for _, boid in pairs(followerBoids.list) do
+  --   local boidDistance = distance(target, boid)
+  --   if math.abs(boidDistance) <= 2 then
+  --     destroyBoid(boid)
+  --   end
+  -- end
 end
 
 -- ****************************
@@ -223,7 +225,6 @@ function keepInside(pBoid, pVTurn, pLimit)
   end
 
   return turn 
-
 end
 
 function convergeTo(pBoid)
@@ -290,45 +291,82 @@ function angle(start, arrival)
   return get_angle(start.x, start.y, arrival.x, arrival.y)
 end
 
-function fireBoids.applyFlocking(dt)
-    for index, boid in ipairs(followerBoids.list) do 
-        -- align position and speed with that of others
-        cohesionForce = cohesion(boid, CVISUAL_RANGE)
-        -- boids avoid each other
-        avoidanceForce = keepDistance(boid, MINDISTANCE)
-        -- boids return to the center when approching window’s edges
-        centeringForce = keepInside(boid, V_TURN, W_LIMIT)
+function splitFireBall(dt)
+  for _, boid in ipairs(followerBoids.list) do
+      boid.vx = boid.vx + (avoidanceForce.dx * 100
+      + centeringForce.dVx * 0
+      + (cohesionForce.dx 
+        + cohesionForce.dVx) * 0
+        + attractionForce.x * 0
+    ) * dt
 
-        attractionForce = convergeTo(boid)
-    
-        -- boids speed adjustement according all forces
-        -- we could add ponderations
-        boid.vx = boid.vx + (avoidanceForce.dx * FOLLOWER_AVOIDANCE
-                              + centeringForce.dVx * FOLLOWER_CENTERING
-                              + (cohesionForce.dx 
-                                + cohesionForce.dVx) * FOLLOWER_COHESION
-                                + attractionForce.x * FOLLOWER_CONVERGING
-                            ) * dt
-    
-        boid.vy = boid.vy + (avoidanceForce.dy * FOLLOWER_AVOIDANCE
-                            + centeringForce.dVy * FOLLOWER_CENTERING
-                            + (cohesionForce.dy 
-                              + cohesionForce.dVy) * FOLLOWER_COHESION
-                              + attractionForce.y * FOLLOWER_CONVERGING
-                            ) * dt
-    
-        -- speed limitation
-        if math.abs(boid.vx) > VMAX then
-          boid.vx = boid.vx/math.abs(boid.vx) * VMAX
-        end
-        if math.abs(boid.vy) > VMAX then
-          boid.vy = boid.vy/math.abs(boid.vy) * VMAX
-        end
-    
-        -- move boid according to its speed
-        boid.x = boid.x + boid.vx * dt
-        boid.y = boid.y + boid.vy * dt
+    boid.vy = boid.vy + (avoidanceForce.dy * 100
+    + centeringForce.dVy * 0
+    + (cohesionForce.dy 
+      + cohesionForce.dVy) * 0
+      + attractionForce.y * 0
+    ) * dt
+  end
+end
+
+function fireBoids.applyFlocking(dt, bSplitFireball)
+  if bSplitFireball then    
+    local angleIncrement = 9 * (math.pi/180)    
+
+    for i, boid in ipairs(followerBoids.list) do
+      if boid.x >= W_WIDTH or boid.y >= W_HEIGHT then
+        destroyBoid(boid)
+      end
+
+      local angle = i * angleIncrement
+
+      local speed = VMAX * 3
+      boid.vx = speed * math.cos(angle) 
+      boid.vy = speed * math.sin(angle)
+
+      boid.x = boid.x + boid.vx * dt
+      boid.y = boid.y + boid.vy * dt 
     end
+  else    
+    for index, boid in ipairs(followerBoids.list) do 
+      -- align position and speed with that of others
+      cohesionForce = cohesion(boid, CVISUAL_RANGE)
+      -- boids avoid each other
+      avoidanceForce = keepDistance(boid, MINDISTANCE)
+      -- boids return to the center when approching window’s edges
+      centeringForce = keepInside(boid, V_TURN, W_LIMIT)
+
+      attractionForce = convergeTo(boid)
+
+      -- boids speed adjustement according all forces
+      -- we could add ponderations
+      boid.vx = boid.vx + (avoidanceForce.dx * FOLLOWER_AVOIDANCE
+                            + centeringForce.dVx * FOLLOWER_CENTERING
+                            + (cohesionForce.dx 
+                              + cohesionForce.dVx) * FOLLOWER_COHESION
+                              + attractionForce.x * FOLLOWER_CONVERGING
+                          ) * dt
+
+      boid.vy = boid.vy + (avoidanceForce.dy * FOLLOWER_AVOIDANCE
+                          + centeringForce.dVy * FOLLOWER_CENTERING
+                          + (cohesionForce.dy 
+                            + cohesionForce.dVy) * FOLLOWER_COHESION
+                            + attractionForce.y * FOLLOWER_CONVERGING
+                          ) * dt
+
+      -- speed limitation
+      if math.abs(boid.vx) > VMAX then
+        boid.vx = boid.vx/math.abs(boid.vx) * VMAX
+      end
+      if math.abs(boid.vy) > VMAX then
+        boid.vy = boid.vy/math.abs(boid.vy) * VMAX
+      end
+
+      -- move boid according to its speed
+      boid.x = boid.x + boid.vx * dt
+      boid.y = boid.y + boid.vy * dt
+    end
+  end
 end
 
 -- ****************************
@@ -337,13 +375,11 @@ end
 
 function destroyBoid(boidToDestroy)
   if boidToDestroy == predatorBoid then
-    predatorLastPos.x = predatorBoid.x
-    predatorLastPos.y = predatorBoid.y
     bPredatorDead = true
-    predatorBoid = {}
+    predatorBoid = nil
   else
-    if table.find(followerBoids.list, boidToDestroy) then
-      followerBoids[boidToDestroy] = nil
+    if table.remove(followerBoids.list, followerBoids.list[boidToDestroy]) then
+      followerBoids.list[boidToDestroy] = nil
     end
   end  
 end

@@ -4,8 +4,7 @@ DISTANCE_PERTE = 400
 DISTANCE_ATTAQUE = 64 
 DELAI_COMPTEUR = 50
 VITESSE_guard = 45
-LARGEUR_ECRAN = 800
-HAUTEUR_ECRAN = 600
+GUARD_NBR = 5
 
 local startTime = 0
 local fireBoids = require("FireBoids")
@@ -16,56 +15,42 @@ local boidImage = love.graphics.newImage('Explosion.png')
 local boidHeight = boidImage:getHeight()
 local boidWidth = boidImage:getWidth()
 
+function love.load()
+  fullscreen = love.window.setFullscreen(true)
+  success = love.window.setMode(W_WIDTH, W_HEIGHT)
+end
+
 function get_dist(x1,y1, x2,y2)
-
-    return math.sqrt((x2-x1)^2+(y2-y1)^2)
-
+  return math.sqrt((x2-x1)^2+(y2-y1)^2)
 end
 
 -- calculer angle entre deux points depuis l’origine de l’écran
 function get_angle(x1,y1, x2,y2) 
-
-    return math.atan2(y2-y1, x2-x1) 
-
+  return math.atan2(y2-y1, x2-x1) 
 end
 
 
 -- on définit le player
 local player = {}
 player.image = love.graphics.newImage('Player.png')
-player.x = (LARGEUR_ECRAN - player.image:getWidth()) / 2 
-player.y = HAUTEUR_ECRAN * 3 / 4
-player.speed = 200
+player.x = (W_WIDTH - player.image:getWidth()) / 2
+player.y = W_HEIGHT * 3 / 4
+player.speed = 600
 
--- on définit le guard 
-local guard = {}
+-- on définit les guards 
+local guards = {}
+guards.list = {}
+guards.y = (W_HEIGHT - guards.image_Garde:getHeight()) / 4
+local firstGuardX = W_WIDTH - guards.image_Garde:getWidth() / 2
 
--- on définit les états possibles
-guard.lst_Etats = {}
-guard.lst_Etats.GARDE = 'Garde'
-guard.lst_Etats.CHERCHE = 'Cherche'
-guard.lst_Etats.ATTAQUE = 'Attaque'
-guard.lst_Etats.PATROUILLE = 'Patrouille'
-guard.etat = guard.lst_Etats.GARDE
-guard.compteur = 0
 
-for k, v in pairs(guard.lst_Etats) do
-    guard['image_'..v] = love.graphics.newImage(v..'.png')
+function update_image_guards()
+  guards.image_courante = 'image_'..guards.etat
 end
+update_image_guards()
 
-guard.x = (LARGEUR_ECRAN - guard.image_Garde:getWidth()) / 2
-guard.y = 0
-guard.vx = 0 
-guard.vy = 0
-guard.fixe_vitesse_patrouille = false
-
-function update_image_guard()
-  guard.image_courante = 'image_'..guard.etat
-end
-update_image_guard()
-
-function getGuardImage()
-  return guard.image_courante
+function getguardsImage()
+  return guards.image_courante
 end
 
 function update_cooldown(dt)
@@ -79,101 +64,101 @@ function update_cooldown(dt)
 end
 
 
-function update_guard(dt)
+function update_guards(dt)
   -- Position par rapport au player
-  local dist = get_dist(guard.x + guard[guard.image_courante]:getWidth()/2, 
-                        guard.y + guard[guard.image_courante]:getHeight()/2, 
+  local dist = get_dist(guards.x + guards[guards.image_courante]:getWidth()/2, 
+                        guards.y + guards[guards.image_courante]:getHeight()/2, 
                         player.x + player.image:getWidth()/2, 
                         player.y + player.image:getHeight()/2)
-  local angle = get_angle(guard.x + guard[guard.image_courante]:getWidth()/2, 
-                          guard.y + guard[guard.image_courante]:getHeight()/2, 
+  local angle = get_angle(guards.x + guards[guards.image_courante]:getWidth()/2, 
+                          guards.y + guards[guards.image_courante]:getHeight()/2, 
                           player.x + player.image:getWidth()/2, 
                           player.y + player.image:getHeight()/2)
 
-  if guard.etat == nil then
+  if guards.etat == nil then
 
-    print(' ERREUR état guard indéfini (nil)')
+    print(' ERREUR état guards indéfini (nil)')
 
   end
 
 
-  if guard.etat == guard.lst_Etats.GARDE then
+  if guards.etat == guards.lst_Etats.GARDE then
 
     -- dans cet état, on ne fait rien. 
-    guard.vx = 0
-    guard.vy = 0
+    guards.vx = 0
+    guards.vy = 0
 
     -- On attend juste que le player passe à proximité
     -- ce qui nous amènera à l’état « cherche »
 
     if dist < DISTANCE_ALERTE then
-      guard.etat = guard.lst_Etats.CHERCHE
-      update_image_guard()
+      guards.etat = guards.lst_Etats.CHERCHE
+      update_image_guards()
     end
 
-  elseif guard.etat == guard.lst_Etats.CHERCHE then
+  elseif guards.etat == guards.lst_Etats.CHERCHE then
 
     -- dans cet état on se dirige vers le player s’il n’est pas trop loin
-    guard.vx = VITESSE_guard * math.cos(angle) * dt
-    guard.vy = VITESSE_guard * math.sin(angle) * dt
+    guards.vx = VITESSE_guards * math.cos(angle) * dt
+    guards.vy = VITESSE_guards * math.sin(angle) * dt
 
     if dist > DISTANCE_PERTE then
-      guard.etat = guard.lst_Etats.PATROUILLE
-      update_image_guard()
+      guards.etat = guards.lst_Etats.PATROUILLE
+      update_image_guards()
       -- on charge le compteur
-      guard.compteur = DELAI_COMPTEUR
+      guards.compteur = DELAI_COMPTEUR
 
     elseif dist < DISTANCE_ATTAQUE then
-      guard.etat = guard.lst_Etats.ATTAQUE
-      update_image_guard()
+      guards.etat = guards.lst_Etats.ATTAQUE
+      update_image_guards()
     end
 
-  elseif guard.etat == guard.lst_Etats.ATTAQUE then
+  elseif guards.etat == guards.lst_Etats.ATTAQUE then
     -- dans cet état, on attaque. Pas implémenté ici
     -- on pourrait faire perdre des PV au player, etc.
-    -- dans tous les cas la guard s’immobilise quand elle attaque
-    guard.vx = 0
-    guard.vy = 0
+    -- dans tous les cas la guards s’immobilise quand elle attaque
+    guards.vx = 0
+    guards.vy = 0
 
     -- on prévoit quand même une sortie de l’état si le player s’est éloigné
 
     if dist > DISTANCE_ATTAQUE then
-      guard.etat = guard.lst_Etats.CHERCHE
-      update_image_guard()
+      guards.etat = guards.lst_Etats.CHERCHE
+      update_image_guards()
     end
 
-  elseif guard.etat == guard.lst_Etats.PATROUILLE then
+  elseif guards.etat == guards.lst_Etats.PATROUILLE then
    
     -- dans cet état on avance dans une direction au hasard et on change 
-    if guard.fixe_vitesse_patrouille == false then
-      guard.vx = VITESSE_guard * (2 * math.random() -1) * dt
-      guard.vy = VITESSE_guard * (2 * math.random() -1) * dt
-      guard.fixe_vitesse_patrouille = true
+    if guards.fixe_vitesse_patrouille == false then
+      guards.vx = VITESSE_guards * (2 * math.random() -1) * dt
+      guards.vy = VITESSE_guards * (2 * math.random() -1) * dt
+      guards.fixe_vitesse_patrouille = true
     end
     -- on retourne à l’état de garde si le compteur arrive à 0
-    guard.compteur = guard.compteur - 10 * dt 
-    if dist > DISTANCE_PERTE and guard.compteur < 0 then
-      guard.compteur = 0
-      guard.etat = guard.lst_Etats.GARDE
-      update_image_guard()
-      guard.fixe_vitesse_patrouille = false
+    guards.compteur = guards.compteur - 10 * dt 
+    if dist > DISTANCE_PERTE and guards.compteur < 0 then
+      guards.compteur = 0
+      guards.etat = guards.lst_Etats.GARDE
+      update_image_guards()
+      guards.fixe_vitesse_patrouille = false
 
     elseif dist < DISTANCE_PERTE then
-      guard.etat = guard.lst_Etats.CHERCHE
-      guard.compteur = 0
-      update_image_guard()
-      guard.fixe_vitesse_patrouille = false
+      guards.etat = guards.lst_Etats.CHERCHE
+      guards.compteur = 0
+      update_image_guards()
+      guards.fixe_vitesse_patrouille = false
     end
 
   else
 
-    print('----- ERREUR état guard inconnu :' .. tostring(guard.etat) .. ' -----')
+    print('----- ERREUR état guards inconnu :' .. tostring(guards.etat) .. ' -----')
 
   end
 
 --  rajouter un test de collision bord écran 
-    guard.x = guard.x + guard.vx
-    guard.y = guard.y + guard.vy
+    guards.x = guards.x + guards.vx
+    guards.y = guards.y + guards.vy
     
 end
 
@@ -183,10 +168,10 @@ function update_player(dt)
   if love.keyboard.isDown('up') and player.y > 0 then
     player.y = player.y - player.speed * dt
 
-  elseif love.keyboard.isDown('right')  and player.x < LARGEUR_ECRAN - player.image:getWidth() then
+  elseif love.keyboard.isDown('right')  and player.x < W_HEIGHT - player.image:getWidth() then
     player.x = player.x + player.speed * dt
 
-  elseif love.keyboard.isDown('down') and player.y < HAUTEUR_ECRAN - player.image:getHeight() then
+  elseif love.keyboard.isDown('down') and player.y < W_HEIGHT - player.image:getHeight() then
     player.y = player.y + player.speed * dt
 
   elseif love.keyboard.isDown('left') and player.x > 0 then
@@ -194,10 +179,10 @@ function update_player(dt)
 
   elseif love.mouse.isDown(1) and not bUnderCooldown then
     if not bUnderCooldown then
-      local currentGuardImage = getGuardImage()
+      local currentguardsImage = getguardsImage()
       startTime = love.timer:getTime()
       bUnderCooldown = true
-      fireBoids.launchFireBall(guard, player, player.image)
+      fireBoids.launchFireBall(guards, player, player.image)
     end
   end
 
@@ -206,24 +191,59 @@ end
 
 function love.update(dt)
     update_player(dt)
-    update_guard(dt)
+    update_guards(dt)
     update_cooldown(dt)
 
     if bUnderCooldown then
-      fireBoids.applyFlocking(dt)
+      fireBoids.checkBoidPositions(guards)
       if not bPredatorDead then
-        fireBoids.trackPrey(dt, guard, player)
+        fireBoids.trackPrey(dt, guards, player)
+        fireBoids.applyFlocking(dt, false, guards)
       else
-        fireBoids.followLastKnownLocation(dt, guard)
+        fireBoids.applyFlocking(dt, true, guards)
       end
     end
 end
 
+function createGuards()
+  local guard = {}
+
+  guard.x = firstGuardX + (i - 1) * 2 * guards.image_Garde:getWidth()
+  guard.y = guards.y
+  guard.vx = 0 
+  guard.vy = 0
+  guard.fixe_vitesse_patrouille = false
+
+  -- on définit les états possibles
+  guard.lst_Etats = {}
+  guard.lst_Etats.GARDE = 'Garde'
+  guard.lst_Etats.CHERCHE = 'Cherche'
+  guard.lst_Etats.ATTAQUE = 'Attaque'
+  guard.lst_Etats.PATROUILLE = 'Patrouille'
+  guard.etat = guards.lst_Etats.GARDE
+  guard.compteur = 0
+
+  for k, v in pairs(guard.lst_Etats) do
+    guard['image_'..v] = love.graphics.newImage(v..'.png')
+  end
+
+  return guard
+end
 
 function love.draw()
-  love.graphics.draw(guard[guard.image_courante], guard.x, guard.y)
+  -- Drawing player
   love.graphics.draw(player.image, player.x, player.y)  
+
+  -- Drawing guards
+  for i = 1, GUARD_NBR do
+    table.insert(guards.list, createGuards())
+  end
+
+  for _, guard in ipairs(guards.list) do
+    love.graphics.draw(guard[guards.image_courante], guard.x, guard.y)
+  end
   
+  -- Drawing fireball when ability used
   if bUnderCooldown and not bTouchedtarget then
     for index, boid in ipairs(followerBoids.list) do
       love.graphics.draw(boidImage, 
@@ -237,6 +257,7 @@ function love.draw()
     end
   end
 
+  -- Drawing fireball guide for other boids
   if bUnderCooldown and not bPredatorDead then
     love.graphics.draw(boidImage, 
       predatorBoid.x + player.image:getWidth()/2, 
@@ -248,6 +269,7 @@ function love.draw()
       boidHeight/2)
   end
   
+  -- "UI" to know when ability is usable
   if bUnderCooldown then
     love.graphics.print("Ability still in cooldown", 20, 200)
   end
