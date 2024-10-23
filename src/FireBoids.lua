@@ -20,6 +20,7 @@ DEAD_ANGLE = 60
 V_TURN = 2 -- could be an individual boid property
 MINDISTANCE = 10
 VMAX = 300
+DAMAGE = 50
 
 FOLLOWER_AVOIDANCE = 15 
 FOLLOWER_COHESION = 4 
@@ -33,10 +34,6 @@ followerBoids = {}
 followerBoids.list = {}
 followerBoids.img = nil
 
-bTouchedtarget = false
-bPredatorDead = false
-local bDoOnce = false
-
 local boids = {}
 boids.list = {}
 
@@ -44,12 +41,13 @@ local predatorLastPos = {}
 predatorLastPos.x = 0
 predatorLastPos.y = 0
 
+DEAD_GUARDS = 0
 -- ****************************
 -- Fonctions
 -- ****************************
 
 function fireBoids.trackPrey(dt, target, player)
-  if not bPredatorDead then
+  if predatorBoid then 
     if target then
       local closestTarget = nil
       local closestDistance = math.huge
@@ -57,57 +55,23 @@ function fireBoids.trackPrey(dt, target, player)
       if closestDistance > 0 then
         closestTarget = target
         closestDistance = distance(predatorBoid, closestTarget)
-        if math.abs(closestDistance) <= DETECTION_VARIANCE then
-          destroyBoid(predatorBoid)
-          return
-        end   
-      end
+      if math.abs(closestDistance) <= DETECTION_VARIANCE then
+        applyDamage(target)
+        destroyBoid(predatorBoid, player)
+        return
+      end   
+    end
 
-      -- Calculating the prey's future position 
-      local futurePosition = {
+    -- Calculating the prey's future position 
+    local futurePosition = {
         x = closestTarget.x + closestTarget.vx * dt,
         y = closestTarget.x + closestTarget.vy * dt
-      }
+    }
 
-      -- Calculating the force to get to the target
-      local force = {
-        x = futurePosition.x - predatorBoid.x,
-        y = futurePosition.y - predatorBoid.y
-      }
-
-      local magnitude = math.sqrt(force.x^2 + force.y^2)
-      if magnitude > 0 then
-        force.x = (force.x/magnitude) * VMAX
-        force.y = (force.y/magnitude) * VMAX
-      end
-
-      predatorBoid.vx = predatorBoid.vx + force.x * dt
-      predatorBoid.vy = predatorBoid.vy + force.y * dt
-
-      local speed = math.sqrt(predatorBoid.vx^2 + predatorBoid.vy^2)
-      if speed > VMAX then
-        predatorBoid.vx = (predatorBoid.vx / speed) * VMAX
-        predatorBoid.vy = (predatorBoid.vy / speed) * VMAX
-      end
-
-      local preyAngle = angle(predatorBoid, closestTarget)
-      predatorBoid.x = predatorBoid.x + speed * math.cos(preyAngle) * dt
-      predatorBoid.y = predatorBoid.y + speed * math.sin(preyAngle) * dt 
-
-      predatorLastPos = {}
-      predatorLastPos.x = predatorBoid.x
-      predatorLastPos.y = predatorBoid.y
-    end
-  end
-end
-
-function fireBoids.followLastKnownLocation(dt, target)
-  for _, boid in pairs(followerBoids.list) do
-    local followAngle = angle(boid, predatorLastPos)
-
+    -- Calculating the force to get to the target
     local force = {
-      x = predatorLastPos.x - boid.x,
-      y = predatorLastPos.y - boid.y
+      x = futurePosition.x - predatorBoid.x,
+      y = futurePosition.y - predatorBoid.y
     }
 
     local magnitude = math.sqrt(force.x^2 + force.y^2)
@@ -116,23 +80,33 @@ function fireBoids.followLastKnownLocation(dt, target)
       force.y = (force.y/magnitude) * VMAX
     end
 
-    boid.vx = boid.vx + force.x * dt
-    boid.vy = boid.vy + force.y * dt
+    predatorBoid.vx = predatorBoid.vx + force.x * dt
+    predatorBoid.vy = predatorBoid.vy + force.y * dt
 
-    local speed = math.sqrt(boid.vx^2 + boid.vy^2)
+    local speed = math.sqrt(predatorBoid.vx^2 + predatorBoid.vy^2)
     if speed > VMAX then
-      boid.vx = (boid.vx / speed) * VMAX
-      boid.vy = (boid.vy / speed) * VMAX
+      predatorBoid.vx = (predatorBoid.vx / speed) * VMAX
+      predatorBoid.vy = (predatorBoid.vy / speed) * VMAX
     end
 
-    boid.x = boid.x + speed * math.cos(followAngle) * dt
-    boid.y = boid.y + speed * math.sin(followAngle) * dt
+      local preyAngle = angle(predatorBoid, closestTarget)
+    predatorBoid.x = predatorBoid.x + speed * math.cos(preyAngle) * dt
+    predatorBoid.y = predatorBoid.y + speed * math.sin(preyAngle) * dt 
+
+    predatorLastPos = {}
+    predatorLastPos.x = predatorBoid.x
+    predatorLastPos.y = predatorBoid.y
+    end
   end
 end
 
-function fireBoids.checkBoidValidity()
-  if #followerBoids.list <= 0 then
-    bTouchedtarget = true
+function applyDamage(target)
+  if target.health > 0 then
+    target.health = target.health - DAMAGE
+    if target.health <= 0 then
+      target.etat = target.lst_Etats.MORT
+      DEAD_GUARDS = DEAD_GUARDS + 1
+    end
   end
 end
 
@@ -224,7 +198,7 @@ function convergeTo(pBoid)
   finalAngle.y = 0
 
   local angleToTarget
-  if bPredatorDead and predatorLastPos then
+  if not predatorBoid and predatorLastPos then
     angleToTarget = math.atan2((predatorLastPos.y - pBoid.y), (predatorLastPos.x - pBoid.x))
   else
     angleToTarget = math.atan2((predatorBoid.y - pBoid.y), (predatorBoid.x - pBoid.x))
@@ -300,13 +274,13 @@ function splitFireBall(dt)
   end
 end
 
-function fireBoids.applyFlocking(dt, bSplitFireball)
+function fireBoids.applyFlocking(dt, bSplitFireball, player)
   if bSplitFireball then    
     local angleIncrement = 9 * (math.pi/180)    
 
     for i, boid in ipairs(followerBoids.list) do
       if boid.x >= W_WIDTH or boid.y >= W_HEIGHT then
-        destroyBoid(boid)
+        destroyBoid(boid, player)
       end
 
       local angle = i * angleIncrement
@@ -364,14 +338,13 @@ end
 -- CLEANUP 
 -- ****************************
 
-function destroyBoid(boidToDestroy)
+function destroyBoid(boidToDestroy, player)
   if boidToDestroy == predatorBoid then
-    bPredatorDead = true
     predatorBoid = nil
   else
     if table.remove(followerBoids.list, followerBoids.list[boidToDestroy]) then
       followerBoids.list[boidToDestroy] = nil
-      loopAmount = 5
+      player.bLaunchSpell = false
     end
   end  
 end

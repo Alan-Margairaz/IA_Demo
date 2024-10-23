@@ -1,17 +1,14 @@
--- calculer distance euclidienne entre deux points
+-- Guards variables
 DISTANCE_ALERTE = 200
 DISTANCE_PERTE = 400
 DISTANCE_ATTAQUE = 64 
 DELAI_COMPTEUR = 50
-VITESSE_guard = 45
+DAMAGE_guard = 10
 GUARD_NBR = 5
 SPAWN_OFFSET = 30
 
--- Fireball variables
-local startTime = 0
+-- Fireball script
 local fireBoids = require("FireBoids")
-local cooldownValue = 10
-local bUnderCooldown = false
 
 -- Boids variables (work around because image communication between scripts seems bugged)
 local boidImage = love.graphics.newImage('Explosion.png')
@@ -24,6 +21,7 @@ distancesForGuards.list = {}
 distancesForGuards.dist = 0
 distancesForGuards.guard = nil
 local closestGuard = nil
+local deadGuards = 0
 
 function love.load()
   fullscreen = love.window.setFullscreen(true)
@@ -46,6 +44,12 @@ player.image = love.graphics.newImage('Player.png')
 player.x = (W_WIDTH - player.image:getWidth()) / 2
 player.y = W_HEIGHT * 3 / 4
 player.speed = 600
+player.health = 100
+player.spellCooldown = 5
+player.lastSpellTime = (player.spellCooldown * -1)
+player.bLaunchSpell = false
+
+local bUpdateBoids = false
 
 -- on définit les guards 
 local guards = {}
@@ -55,22 +59,51 @@ function update_image_guard(guard)
   guard.img = 'image_'..guard.etat
 end
 
-function getguardImage(guard)
-  return guard.img
+function Attack(initator, str)
+  local time = love.timer.getTime()
+  -- Guard case
+  if initator and str == "guard" then
+    initator.lastAttackTime = time
+    if player.health > 0 then
+      player.health = player.health - initator.damage
+      if player.health <= 0 then
+        love.event.quit(0)
+      end
+    end
+  -- Player case
+  elseif initator and str == "player" then
+    initator.bLaunchSpell = true
+    initator.lastAttackTime = time
+    fireBoids.launchFireBall(initator)
+  end
 end
 
-function update_cooldown(dt, guard)
-  local currentTime = love.timer.getTime() - startTime
+function bCanAttack(initator, str)
+  if initator and str == "guard" then
+    return love.timer.getTime() - initator.lastAttackTime >= initator.attackCooldown
+  elseif initator and str == "player" then
+      return love.timer.getTime() - initator.lastSpellTime >= initator.spellCooldown
+  end
+end
 
-  if currentTime >= cooldownValue and bUnderCooldown then
-    bUnderCooldown = false
-    bTouchedtarget = false
-    bPredatorDead = false
-    guard.etat = guard.lst_Etats.MORT
+function update_fireball(dt)
+  if predatorBoid then
+    if findClosestGuardPosition() then
+      closestGuard = distancesForGuards.list[1]
+      fireBoids.trackPrey(dt, closestGuard.guard, player)
+      fireBoids.applyFlocking(dt, false)
+    end
+
+  else
+    fireBoids.applyFlocking(dt, true, player)
   end
 end
 
 function update_guards(dt)
+  if deadGuards == #guards.list then
+    love.event.quit()
+  end
+
   for _, guard in ipairs(guards.list) do
     -- Position par rapport au player
     local dist = get_dist(guard.x + guard[guard.img]:getWidth()/2, 
@@ -97,8 +130,8 @@ function update_guards(dt)
       end
 
     elseif guard.etat == guard.lst_Etats.CHERCHE then
-      guard.vx = VITESSE_guards * math.cos(angle) * dt
-      guard.vy = VITESSE_guards * math.sin(angle) * dt
+      guard.vx = guard.speed * math.cos(angle) * dt
+      guard.vy = guard.speed * math.sin(angle) * dt
 
       if dist > DISTANCE_PERTE then
         guard.etat = guard.lst_Etats.PATROUILLE
@@ -109,16 +142,15 @@ function update_guards(dt)
       elseif dist < DISTANCE_ATTAQUE then
         guard.etat = guard.lst_Etats.ATTAQUE
         update_image_guard(guard)
+        
+        if bCanAttack(guard, "guard") then
+          Attack(guard, "guard")    
+        end
       end
 
     elseif guard.etat == guard.lst_Etats.ATTAQUE then
-      -- dans cet état, on attaque. Pas implémenté ici
-      -- on pourrait faire perdre des PV au player, etc.
-      -- dans tous les cas la guards s’immobilise quand elle attaque
       guard.vx = 0
       guard.vy = 0
-
-      -- on prévoit quand même une sortie de l’état si le player s’est éloigné
 
       if dist > DISTANCE_ATTAQUE then
         guard.etat = guard.lst_Etats.CHERCHE
@@ -129,8 +161,8 @@ function update_guards(dt)
     
       -- dans cet état on avance dans une direction au hasard et on change 
       if guard.fixe_vitesse_patrouille == false then
-        guard.vx = VITESSE_guards * (2 * math.random() -1) * dt
-        guard.vy = VITESSE_guards * (2 * math.random() -1) * dt
+        guard.vx = guard.speed * (2 * math.random() -1) * dt
+        guard.vy = guard.speed * (2 * math.random() -1) * dt
         guard.fixe_vitesse_patrouille = true
       end
       -- on retourne à l’état de garde si le compteur arrive à 0
@@ -149,9 +181,11 @@ function update_guards(dt)
       end
 
     elseif guard.etat == guard.lst_Etats.MORT then
-      guard.vx = 0
-      guard.vy = 0
       guard.fixe_vitesse_patrouille = false
+      guard.x = guard.x
+      guard.y = guard.y
+      guard.speed = 0
+      
       update_image_guard(guard)
     else
       print('----- ERREUR état guard inconnu :' .. tostring(guard.etat) .. ' -----')
@@ -163,9 +197,7 @@ function update_guards(dt)
   end
 end
 
-
 function update_player(dt)
-
   if love.keyboard.isDown('up') and player.y > 0 then
     player.y = player.y - player.speed * dt
 
@@ -178,28 +210,32 @@ function update_player(dt)
   elseif love.keyboard.isDown('left') and player.x > 0 then
     player.x = player.x - player.speed * dt
 
-  elseif love.mouse.isDown(1) and not bUnderCooldown then
-    if not bUnderCooldown then
-      startTime = love.timer:getTime()
-      bUnderCooldown = true
-      fireBoids.launchFireBall(player)
+  elseif love.mouse.isDown(1) and bCanAttack(player, "player") then
+    if not bUpdateBoids then
+      bUpdateBoids = true
+      Attack(player, "player")
     end
   end
 end
 
 function findClosestGuardPosition()
-  for _, guard in ipairs(guards.list) do
-    local currentDistanceForGuard = {}
-    currentDistanceForGuard.dist = distance(predatorBoid, guard)
-    currentDistanceForGuard.guard = guard
+  distancesForGuards.list = {}
+  
+  for i, guard in ipairs(guards.list) do
+    if guard.health > 0 or guard.etat ~= guard.lst_Etats.MORT then
+      local currentDistanceForGuard = {}
+      currentDistanceForGuard.dist = distance(predatorBoid, guard)
+      currentDistanceForGuard.guard = guard
 
-    table.insert(distancesForGuards.list, currentDistanceForGuard)
-    if #distancesForGuards.list == 5 then
-      sortTable(distancesForGuards.list)
-      return true
+      table.insert(distancesForGuards.list, currentDistanceForGuard)
+      if #distancesForGuards.list == (#guards.list - DEAD_GUARDS) then
+        table.sort(distancesForGuards.list, function(a, b)
+          return a.dist < b.dist
+        end)
+        return true
+      end    
     end
   end
-  return false
 end
 
 function distance(p1, p2) 
@@ -207,32 +243,16 @@ function distance(p1, p2)
 end
 
 function love.update(dt)
+  -- Fireball update when used
+  if bUpdateBoids then
+    update_fireball(dt)
+  end
+
   update_player(dt)
   update_guards(dt)
-
-  for _, guardToFollow in ipairs(guards.list) do
-    update_cooldown(dt)
-  end
   
-  -- Fireball update when used
-  if bUnderCooldown then
-    if not bPredatorDead then
-
-      if findClosestGuardPosition() then
-        closestGuard = distancesForGuards.list[1]
-      end
-    
-      for _, guardToFollow in ipairs(guards.list) do
-        if guardToFollow == closestGuard.guard then
-          fireBoids.trackPrey(dt, guardToFollow, player)
-          fireBoids.applyFlocking(dt, false)
-        end
-      end 
-
-    else
-      fireBoids.applyFlocking(dt, true)
-      fireBoids.checkBoidValidity()
-    end
+  if DEAD_GUARDS == GUARD_NBR then
+    love.event.quit()
   end
 end
 
@@ -253,13 +273,18 @@ function createGuards(idx)
   end
   update_image_guard(guard)
 
-  --guard.img = love.graphics.newImage('Garde.png')
   guard.x = (W_WIDTH - guard[guard.img]:getWidth()) / 3 
             + (idx - 1) * 2 * guard[guard.img]:getWidth()
   guard.y = (W_HEIGHT - guard[guard.img]:getHeight()) / 4
   guard.vx = 0
   guard.vy = 0
   guard.fixe_vitesse_patrouille = false
+  guard.health = 100
+  guard.speed = 150
+  guard.damage = 25
+  guard.attackCooldown = 2.5
+  guard.lastAttackTime = (guard.attackCooldown * -1)
+
   return guard
 end
 
@@ -272,13 +297,17 @@ function love.draw()
   -- Drawing player
   love.graphics.draw(player.image, player.x, player.y)  
 
-  -- Drawing image for each guard
+  -- Drawing guards
   for _, guard in ipairs(guards.list) do
     love.graphics.draw(guard[guard.img], guard.x, guard.y)
   end
   
-  -- Drawing fireball when ability used
-  if bUnderCooldown and not bTouchedtarget then
+  if #followerBoids.list <= 0 then
+    bUpdateBoids = false
+  end
+
+  -- Drawing fireball follwing boids when triggered used
+  if player.bLaunchSpell and bUpdateBoids then
     for index, boid in ipairs(followerBoids.list) do
       love.graphics.draw(boidImage, 
         boid.x + player.image:getWidth()/2, 
@@ -292,7 +321,7 @@ function love.draw()
   end
 
   -- Drawing fireball guide for other boids
-  if bUnderCooldown and not bPredatorDead then
+  if player.bLaunchSpell and predatorBoid and bUpdateBoids then
     love.graphics.draw(boidImage, 
       predatorBoid.x + player.image:getWidth()/2, 
       predatorBoid.y + player.image:getHeight()/2, 
@@ -301,15 +330,13 @@ function love.draw()
       0.67, 
       boidWidth/2, 
       boidHeight/2)
-    love.graphics.print("predatorBoid x: "..predatorBoid.x..", y: "..predatorBoid.y..", vx: "..predatorBoid.vx..", vy: "..predatorBoid.vy, 20, 150)
   end
   
   -- "UI" to know when ability is usable
-  if bUnderCooldown then
-    love.graphics.print("Ability still in cooldown", 20, 200)
+  if not player.bLaunchSpell then
+    love.graphics.print("Ability usable with right click!", (W_WIDTH/2), (W_HEIGHT - 50))
   end
 end
-
 
 function love.keypressed(key)
   if key == "escape" then
