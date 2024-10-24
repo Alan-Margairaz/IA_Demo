@@ -1,9 +1,8 @@
 -- Guards variables
-DISTANCE_ALERTE = 200
+DISTANCE_ALERTE = 300
 DISTANCE_PERTE = 400
-DISTANCE_ATTAQUE = 64 
+DISTANCE_ATTAQUE = 80 
 DELAI_COMPTEUR = 50
-DAMAGE_guard = 10
 GUARD_NBR = 5
 SPAWN_OFFSET = 30
 
@@ -60,10 +59,9 @@ function update_image_guard(guard)
 end
 
 function Attack(initator, str)
-  local time = love.timer.getTime()
   -- Guard case
   if initator and str == "guard" then
-    initator.lastAttackTime = time
+    initator.lastAttackTime = love.timer.getTime()
     if player.health > 0 then
       player.health = player.health - initator.damage
       if player.health <= 0 then
@@ -73,7 +71,7 @@ function Attack(initator, str)
   -- Player case
   elseif initator and str == "player" then
     initator.bLaunchSpell = true
-    initator.lastAttackTime = time
+    initator.lastAttackTime = love.timer.getTime()
     fireBoids.launchFireBall(initator)
   end
 end
@@ -117,6 +115,15 @@ function update_guards(dt)
 
     if guard.etat == nil then
       print(' ERREUR état guards indéfini (nil)')
+    end
+
+    if B_ALERT then
+      if dist < DISTANCE_ATTAQUE then
+        guard.etat = guard.lst_Etats.CHERCHE
+      else
+        guard.etat = guard.lst_Etats.PATROUILLE
+      end
+      B_ALERT = false
     end
 
     if guard.etat == guard.lst_Etats.GARDE then
@@ -280,8 +287,8 @@ function createGuards(idx)
   guard.vy = 0
   guard.fixe_vitesse_patrouille = false
   guard.health = 100
-  guard.speed = 150
-  guard.damage = 25
+  guard.speed = 100
+  guard.damage = 10
   guard.attackCooldown = 2.5
   guard.lastAttackTime = (guard.attackCooldown * -1)
 
@@ -296,6 +303,8 @@ end
 function love.draw()
   -- Drawing player
   love.graphics.draw(player.image, player.x, player.y)  
+  love.graphics.print("Player health : "..player.health, 20, 200)
+
 
   -- Drawing guards
   for _, guard in ipairs(guards.list) do
@@ -334,7 +343,7 @@ function love.draw()
   
   -- "UI" to know when ability is usable
   if not player.bLaunchSpell then
-    love.graphics.print("Ability usable with right click!", (W_WIDTH/2), (W_HEIGHT - 50))
+    love.graphics.print("Ability usable with left click!", (W_WIDTH/3), (W_HEIGHT - 50))
   end
 end
 

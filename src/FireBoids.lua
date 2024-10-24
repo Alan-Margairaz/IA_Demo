@@ -12,7 +12,7 @@ W_HEIGHT = love.graphics.getHeight()
 W_LIMIT = 40
 
 DETECTION_VARIANCE = 1
-
+B_ALERT = false
 
 N_BOIDS = 41
 CVISUAL_RANGE = 60 -- could be an individual boid property
@@ -106,6 +106,13 @@ function applyDamage(target)
     if target.health <= 0 then
       target.etat = target.lst_Etats.MORT
       DEAD_GUARDS = DEAD_GUARDS + 1
+    else
+      local randState = math.random(0,1)
+      if randState < 0.5 then
+        target.etat = target.lst_Etats.CHERCHE
+      else
+        target.etat = target.lst_Etats.PATROUILLE
+      end
     end
   end
 end
