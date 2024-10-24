@@ -98,10 +98,6 @@ function update_fireball(dt)
 end
 
 function update_guards(dt)
-  if deadGuards == #guards.list then
-    love.event.quit()
-  end
-
   for _, guard in ipairs(guards.list) do
     -- Position par rapport au player
     local dist = get_dist(guard.x + guard[guard.img]:getWidth()/2, 
@@ -113,17 +109,17 @@ function update_guards(dt)
                             player.x + player.image:getWidth()/2, 
                             player.y + player.image:getHeight()/2)
 
-    if guard.etat == nil then
-      print(' ERREUR état guards indéfini (nil)')
+    if deadGuards > 0 and guard.health > 0 then
+      local despairChance = math.random(0,1)
+      if despairChance < 0.15 then
+        guard.etat = guard.lst_Etats.MORT
+      end
+    elseif deadGuards == #guards.list then
+      love.event.quit()
     end
 
-    if B_ALERT then
-      if dist < DISTANCE_ATTAQUE then
-        guard.etat = guard.lst_Etats.CHERCHE
-      else
-        guard.etat = guard.lst_Etats.PATROUILLE
-      end
-      B_ALERT = false
+    if guard.etat == nil then
+      print(' ERREUR état guards indéfini (nil)')
     end
 
     if guard.etat == guard.lst_Etats.GARDE then

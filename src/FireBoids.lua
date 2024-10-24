@@ -12,7 +12,6 @@ W_HEIGHT = love.graphics.getHeight()
 W_LIMIT = 40
 
 DETECTION_VARIANCE = 1
-B_ALERT = false
 
 N_BOIDS = 41
 CVISUAL_RANGE = 60 -- could be an individual boid property
@@ -22,9 +21,9 @@ MINDISTANCE = 10
 VMAX = 300
 DAMAGE = 50
 
-FOLLOWER_AVOIDANCE = 15 
+FOLLOWER_AVOIDANCE = 5 
 FOLLOWER_COHESION = 4 
-FOLLOWER_CENTERING = 270
+FOLLOWER_CENTERING = 200
 FOLLOWER_CONVERGING = 300
 
 predatorBoid = {}
@@ -152,7 +151,6 @@ function cohesion(pBoid, pVisualRange)
 
 end
 
-
 function keepDistance(pBoid, pMinDistance)
 
   local dist = {}
@@ -171,7 +169,6 @@ function keepDistance(pBoid, pMinDistance)
   return dist 
 
 end
-
 
 function keepInside(pBoid, pVTurn, pLimit)
 
