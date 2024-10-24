@@ -106,7 +106,7 @@ function applyDamage(target)
       target.etat = target.lst_Etats.MORT
       DEAD_GUARDS = DEAD_GUARDS + 1
     else
-      local randState = math.random(0,1)
+      local randState = love.math.random()
       if randState < 0.5 then
         target.etat = target.lst_Etats.CHERCHE
       else

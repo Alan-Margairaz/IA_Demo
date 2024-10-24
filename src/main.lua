@@ -20,7 +20,7 @@ distancesForGuards.list = {}
 distancesForGuards.dist = 0
 distancesForGuards.guard = nil
 local closestGuard = nil
-local deadGuards = 0
+DEAD_GUARDS = 0
 
 function love.load()
   fullscreen = love.window.setFullscreen(true)
@@ -109,12 +109,13 @@ function update_guards(dt)
                             player.x + player.image:getWidth()/2, 
                             player.y + player.image:getHeight()/2)
 
-    if deadGuards > 0 and guard.health > 0 then
-      local despairChance = math.random(0,1)
-      if despairChance < 0.15 then
+    if DEAD_GUARDS > 0 and guard.health > 0 then
+      local despairChance = love.math.random()
+      if despairChance < 0.1 then
+        despairChance = math.huge
         guard.etat = guard.lst_Etats.MORT
       end
-    elseif deadGuards == #guards.list then
+    elseif DEAD_GUARDS == #guards.list then
       love.event.quit()
     end
 
@@ -185,10 +186,8 @@ function update_guards(dt)
 
     elseif guard.etat == guard.lst_Etats.MORT then
       guard.fixe_vitesse_patrouille = false
-      guard.x = guard.x
-      guard.y = guard.y
-      guard.speed = 0
-      
+      guard.vx = 0
+      guard.vy = 0      
       update_image_guard(guard)
     else
       print('----- ERREUR état guard inconnu :' .. tostring(guard.etat) .. ' -----')
